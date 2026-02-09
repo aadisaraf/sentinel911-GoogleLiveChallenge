@@ -1,0 +1,8 @@
+{
+  "name": "Sentinel-3: Tactical Dispatcher",
+  "description": "An Action-Era emergency response orchestrator using Gemini 3 reasoning and real-time multimodal interaction.",
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation"
+  ]
+}
