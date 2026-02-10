@@ -7,7 +7,7 @@
 
 ## 🎯 What It Does
 
-Sentinel-3 is a **Smart City Command Center** that uses Gemini 3 to autonomously manage emergency incidents. Unlike traditional 911 dispatch systems that require human operators to manually coordinate responses, Sentinel-3:
+Sentinel-911 is a **Smart City Command Center** that uses Gemini 3 to autonomously manage emergency incidents. Unlike traditional 911 dispatch systems that require human operators to manually coordinate responses, Sentinel-911:
 
 - **Listens in real-time** to caller voice input via Gemini Live API
 - **Autonomously deploys resources** (police, fire, ambulance, drones) without waiting for approval
