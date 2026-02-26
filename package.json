@@ -9,13 +9,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "lucide-react": "^0.563.0",
-    "react": "^19.2.4",
     "@google/genai": "^1.39.0",
-    "react-dom": "^19.2.4",
+    "@types/rbush": "^4.0.0",
     "clsx": "^2.1.1",
-    "react-leaflet": "^5.0.0",
-    "leaflet": "^1.9.4"
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.563.0",
+    "rbush": "^4.0.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-leaflet": "^5.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

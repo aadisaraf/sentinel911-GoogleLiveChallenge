@@ -6,8 +6,38 @@ import AudioVisualizer from './components/AudioVisualizer';
 import { LocationData, CallState, LogEntry, IncidentDetails, ProtocolStep } from './types';
 import { LiveClient } from './services/liveClient';
 import { GoogleGenAI, Type } from '@google/genai';
-import { Siren, Activity, ShieldCheck, BrainCircuit, Globe, Zap, Mic, FileText, AlertOctagon, CheckCircle2, Play, ClipboardList, Server, Radio, Truck } from 'lucide-react';
+import { Siren, Activity, ShieldCheck, BrainCircuit, Globe, Zap, Mic, FileText, AlertOctagon, CheckCircle2, Play, ClipboardList, Server, Radio, Truck, Navigation } from 'lucide-react';
 import clsx from 'clsx';
+import RBush from 'rbush';
+import policeStationsData from './utils/policeStations.json';
+
+// Spatial Index for Police Stations
+interface PoliceStation {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  address?: string;
+}
+
+// RBush adapter: [minX, minY, maxX, maxY, data]
+interface StationItem {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  station: PoliceStation;
+}
+
+const stationIndex = new RBush<StationItem>();
+const stationItems: StationItem[] = policeStationsData.map(p => ({
+  minX: p.lng,
+  minY: p.lat,
+  maxX: p.lng,
+  maxY: p.lat,
+  station: p
+}));
+stationIndex.load(stationItems);
 
 const NOMINATIM_BASE_URL = 'https://nominatim.openstreetmap.org';
 
@@ -414,25 +444,45 @@ Respond with JSON. Only suggest an action if it's CLEARLY needed and NOT already
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(async (pos) => {
         const { latitude, longitude } = pos.coords;
-        try {
-          const delta = 0.1;
-          const viewbox = `${longitude - delta},${latitude + delta},${longitude + delta},${latitude - delta}`;
-          const policeUrl = `${NOMINATIM_BASE_URL}/search?q=police+station&viewbox=${viewbox}&bounded=1&limit=1`;
-          const policeData = await safeFetch(policeUrl);
+        
+        // OPTIMIZED ALGORITHM: Use R-Tree bounding box search (Spatial Indexing)
+        // Instead of scanning all stations (O(n)), we query a local box (O(log n))
+        // This is extremely fast even with 100,000+ stations.
+        
+        const SEARCH_RADIUS_DEG = 0.5; // Approx 30-35 miles
+        const candidates = stationIndex.search({
+          minX: longitude - SEARCH_RADIUS_DEG,
+          minY: latitude - SEARCH_RADIUS_DEG,
+          maxX: longitude + SEARCH_RADIUS_DEG,
+          maxY: latitude + SEARCH_RADIUS_DEG
+        });
 
-          if (Array.isArray(policeData) && policeData[0]) {
-            const station = policeData[0];
-            setLocation({
-              address: `[STATION HQ] ${station.display_name.split(',')[0]}`,
-              lat: parseFloat(station.lat),
-              lng: parseFloat(station.lon),
-              confidence: 'Station Lock'
-            });
-            return;
-          }
-        } catch (e) {
-          console.warn("Police station search failed", e);
+        let nearest = null;
+        let minDist = Infinity;
+
+        // Linear scan only on the small subset of candidates
+        for (const item of candidates) {
+            const d = Math.pow(item.station.lat - latitude, 2) + Math.pow(item.station.lng - longitude, 2);
+            if (d < minDist) {
+                minDist = d;
+                nearest = item.station;
+            }
         }
+
+        if (nearest) {
+            // Found a station in the spatial index
+             setLocation({
+              address: `[NEAREST HQ] ${nearest.name}`,
+              lat: nearest.lat,
+              lng: nearest.lng,
+              confidence: 'Station Lock (Local DB)'
+            });
+            // Force map update
+            addLog(`Fast-Search: Nearest Dept Found (${nearest.name})`, 'system');
+            return;
+        }
+        
+        // Fallback or if no close station found
         setLocation({
           address: `Sector Grid: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
           lat: latitude,
