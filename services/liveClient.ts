@@ -19,7 +19,7 @@ export class LiveClient {
   private audioContext: AudioContext | null = null;
   private inputContext: AudioContext | null = null;
   private stream: MediaStream | null = null;
-  private processor: ScriptProcessorNode | null = null;
+  private processor: AudioWorkletNode | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
   private nextStartTime = 0;
   private isConnected = false;
@@ -47,6 +47,8 @@ export class LiveClient {
 
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       this.inputContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+
+      await this.inputContext.audioWorklet.addModule('/audio-processor.js');
 
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
@@ -249,7 +251,7 @@ CRITICAL:
 - NEVER say "I am locking location" or "Deploying units" - just DO it natively via tools.`;
 
       this.sessionPromise = this.ai!.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+        model: 'gemini-2.0-flash-exp',
         config: {
           responseModalities: [Modality.AUDIO],
           systemInstruction: systemInstruction,
@@ -266,6 +268,7 @@ CRITICAL:
           },
           onclose: (e: any) => {
             console.error("LiveClient connection closed:", e);
+            console.error(`Close Code: ${e.code}, Reason: ${e.reason || "No explicit reason"}, WasClean: ${e.wasClean}`);
             if (e.code === 4004 || e.code === 4003 || e.reason === "invalid API key" || (this.ai as any)?.apiKey === "MOCK_KEY_FOR_LOCAL_DEV") {
                 console.error("CRITICAL: Invalid API Key provided to the Live WebRTC Client.");
                 alert("CRITICAL ERROR: Connection terminated. The GEMINI_API_KEY being provided by the backend is invalid. Please check your backend .env file.");
@@ -291,14 +294,15 @@ CRITICAL:
   private startAudioInput() {
     if (!this.inputContext || !this.stream || !this.sessionPromise) return;
     this.source = this.inputContext.createMediaStreamSource(this.stream);
-    this.processor = this.inputContext.createScriptProcessor(4096, 1, 1);
-    this.processor.onaudioprocess = (e) => {
+    this.processor = new AudioWorkletNode(this.inputContext, 'audio-processor');
+    this.processor.port.onmessage = (e) => {
       if (!this.isConnected) return;
-      const inputData = e.inputBuffer.getChannelData(0);
+      const inputData = e.data as Float32Array;
       let sum = 0;
       for (let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
       this.callbacks.onVolumeChange(Math.sqrt(sum / inputData.length));
       this.sessionPromise?.then(session => {
+        if (!this.isConnected) return;
         try {
           session.sendRealtimeInput({ media: createPcmBlob(inputData) });
         } catch (err) {
@@ -318,12 +322,10 @@ CRITICAL:
     
     this.sessionPromise.then(session => {
         try {
-            session.send({
-                realtimeInput: {
-                    mediaChunks: [{
-                        mimeType: "image/jpeg",
-                        data: base64Data
-                    }]
+            session.sendRealtimeInput({
+                media: {
+                    mimeType: "image/jpeg",
+                    data: base64Data
                 }
             });
             console.log("Vision frame sent to Gemini Live API");

@@ -85,7 +85,7 @@ Requirements:
 """
     try:
         response = client.models.generate_images(
-            model='gemini-3-pro-image-preview',
+            model='gemini-2.0-flash-exp',
             prompt=base_prompt,
             config=types.GenerateImagesConfig(
                 number_of_images=1,
@@ -167,7 +167,7 @@ TRANSCRIPT: {req.transcript}"""
 
     try:
         response = client.models.generate_content(
-            model='gemini-3-flash-preview',
+            model='gemini-2.5-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -214,7 +214,7 @@ Respond with JSON. Only suggest an action if it's CLEARLY needed and NOT already
 
     try:
         response = client.models.generate_content(
-            model='gemini-3-flash-preview',
+            model='gemini-2.5-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
