@@ -259,6 +259,40 @@ sentinel911-GoogleLiveChallenge/
 | **Technical Implementation (30%)** | Multi-model orchestration (3 Gemini models). 9 autonomous tools. Google Cloud Run + Firestore + Search Grounding. AudioWorklet + R-Tree spatial indexing. |
 | **Demo & Presentation (30%)** | Professional tactical Command Center UI. Architecture diagram included. Cloud deployment proof via `/api/health` endpoint and deployment script. |
 
+## 🧪 Playtesting & Judging Instructions (Read First)
+
+**Welcome judges!** To evaluate Sentinel-911's autonomous dispatch features, please follow this test script:
+
+### Step 1: Initialize System
+1. Open the live deployment URL or run the project locally (see above).
+2. Click **ENGAGE SYSTEM** to grant microphone access.
+3. Observe the `[SYSTEM ONLINE]` message in the terminal.
+
+### Step 2: Trigger Autonomous Location Lock
+1. Say: *"There's an emergency at 123 Main Street in Springfield!"*
+2. **Watch the UI:** The tactical map should instantly fly to the geocoded coordinates.
+3. The AI will respond acknowledging the location.
+
+### Step 3: Trigger Multi-Unit Dispatch
+1. Say: *"It's a huge fire, there are people trapped, and it looks like a chemical spill!"*
+2. **Watch the UI:**
+   - Red `FIRE` units deploy on the map.
+   - Blue `POLICE` units deploy to secure the area.
+   - Yellow `HAZMAT` units deploy for the chemicals.
+   - A pulsing `LOCKDOWN` perimeter appears on the map.
+3. The AI will announce the dispatch of multiple units.
+
+### Step 4: Trigger Drone Reconnaissance
+1. Say: *"Can you get a visual on the fire from above?"*
+2. **Watch the UI:**
+   - Drone icons launch on the map.
+   - The system calls the Gemini Image Generation API.
+   - A satellite/aerial recon image appears on the right panel.
+
+### Step 5: Verify Audit Trail (Optional)
+1. If testing locally with Firebase credentials, check your Firestore database.
+2. Every action (set_location, dispatch_unit, deploy_drones) is recorded in the `incident_logs` collection.
+
 ---
 
 ## License
