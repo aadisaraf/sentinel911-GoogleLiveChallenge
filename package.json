@@ -10,8 +10,11 @@
   },
   "dependencies": {
     "@google/genai": "^1.39.0",
+    "@types/crypto-js": "^4.2.2",
     "@types/rbush": "^4.0.0",
     "clsx": "^2.1.1",
+    "cors": "^2.8.6",
+    "crypto-js": "^4.2.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.563.0",
     "rbush": "^4.0.1",

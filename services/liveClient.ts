@@ -1,6 +1,7 @@
 
 import { GoogleGenAI, LiveServerMessage, Modality, Type, FunctionDeclaration } from "@google/genai";
 import { createPcmBlob, decodeAudioData, base64ToUint8Array } from "../utils/audioUtils";
+import { decryptData } from '../utils/cryptoUtils';
 
 interface LiveClientCallbacks {
   onOpen: () => void;
@@ -14,7 +15,7 @@ interface LiveClientCallbacks {
 }
 
 export class LiveClient {
-  private ai: GoogleGenAI;
+  private ai: GoogleGenAI | null = null;
   private audioContext: AudioContext | null = null;
   private inputContext: AudioContext | null = null;
   private stream: MediaStream | null = null;
@@ -28,13 +29,22 @@ export class LiveClient {
 
   constructor(callbacks: LiveClientCallbacks) {
     this.callbacks = callbacks;
-    this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
   }
 
   public async connect() {
     if (this.isConnected) return;
 
     try {
+      // Securely fetch and decrypt the API key from the backend proxy
+      const configRes = await fetch('http://localhost:8000/api/config');
+      const encryptedConfig = await configRes.json();
+      const decConfig = decryptData(encryptedConfig);
+      
+      if (!decConfig.apiKey) {
+        throw new Error("Failed to retrieve secure API key from server");
+      }
+      this.ai = new GoogleGenAI({ apiKey: decConfig.apiKey });
+
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       this.inputContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
 
@@ -199,7 +209,7 @@ CRITICAL:
 - DO NOT say "I am locking location" or "Deploying units" - just DO it.
 - Action over words: Use the tool, then ask the follow-up question.`;
 
-      this.sessionPromise = this.ai.live.connect({
+      this.sessionPromise = this.ai!.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         config: {
           responseModalities: [Modality.AUDIO],
@@ -212,7 +222,12 @@ CRITICAL:
             this.callbacks.onOpen();
             this.startAudioInput();
           },
-          onclose: () => {
+          onclose: (e: any) => {
+            console.error("LiveClient connection closed:", e);
+            if (e.code === 4004 || e.code === 4003 || e.reason === "invalid API key" || this.ai?.apiKey === "MOCK_KEY_FOR_LOCAL_DEV") {
+                console.error("CRITICAL: Invalid API Key provided to the Live WebRTC Client.");
+                alert("CRITICAL ERROR: Connection terminated. The GEMINI_API_KEY being provided by the backend is invalid. Please check your backend .env file.");
+            }
             this.isConnected = false;
             this.callbacks.onClose();
             this.stopAudio();

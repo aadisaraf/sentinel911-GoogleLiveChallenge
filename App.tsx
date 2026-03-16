@@ -5,7 +5,7 @@ import InfoPanel from './components/InfoPanel';
 import AudioVisualizer from './components/AudioVisualizer';
 import { LocationData, CallState, LogEntry, IncidentDetails, ProtocolStep } from './types';
 import { LiveClient } from './services/liveClient';
-import { GoogleGenAI, Type } from '@google/genai';
+import { Type } from '@google/genai';
 import { Siren, Activity, ShieldCheck, BrainCircuit, Globe, Zap, Mic, FileText, AlertOctagon, CheckCircle2, Play, ClipboardList, Server, Radio, Truck, Navigation } from 'lucide-react';
 import clsx from 'clsx';
 import RBush from 'rbush';
@@ -38,6 +38,8 @@ const stationItems: StationItem[] = policeStationsData.map(p => ({
   station: p
 }));
 stationIndex.load(stationItems);
+
+import { decryptData } from './utils/cryptoUtils';
 
 const NOMINATIM_BASE_URL = 'https://nominatim.openstreetmap.org';
 
@@ -141,56 +143,21 @@ const App: React.FC = () => {
     setIsGeneratingImage(true);
     setReconImage(null);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-
-      const basePrompt = withResponders
-        ? `Generate a photorealistic aerial drone photograph looking straight down at this location: "${address}". 
-
-Requirements:
-- FULL COLOR image, NOT black and white
-- Bird's eye / top-down drone perspective from about 200 feet altitude
-- Show the street, buildings, rooftops, parked cars, trees
-- Daytime with natural lighting and shadows
-- INCLUDE emergency vehicles at the scene: fire trucks with flashing lights, police cars with sirens, ambulances  
-- Show firefighters near the building, hoses deployed
-- Show police cars blocking the street forming a perimeter
-- The scene should look like an ACTIVE emergency response in progress
-- Realistic urban/suburban environment with detail
-- Include a visible street sign or text overlay showing: "${address}"`
-        : `Generate a photorealistic aerial drone photograph looking straight down at this location: "${address}". 
-
-Requirements:
-- FULL COLOR image, NOT black and white
-- Bird's eye / top-down drone perspective from about 200 feet altitude
-- Show the street, buildings, rooftops, parked cars, trees
-- Daytime with natural lighting and shadows
-- DO NOT include any emergency vehicles, police, firefighters, or officials
-- DO NOT include any people in uniform
-- The scene should look like a normal neighborhood BEFORE emergency response arrives
-- Realistic urban/suburban environment with detail
-- Include a visible street sign or text overlay showing: "${address}"`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-image-preview',
-        contents: { parts: [{ text: basePrompt }] },
-        config: {
-          responseModalities: ['Text', 'Image'],
-          imageConfig: {
-            aspectRatio: "16:9",
-            imageSize: "1K"
-          }
-        }
+      const res = await fetch('http://localhost:8000/api/recon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address, withResponders })
       });
+      const encryptedData = await res.json();
+      const data = decryptData(encryptedData);
 
-      for (const part of response.candidates?.[0]?.content?.parts || []) {
-        if (part.inlineData) {
-          const base64String = part.inlineData.data;
-          setReconImage(`data:image/png;base64,${base64String}`);
-          addLog(withResponders
-            ? `Visual updated: First responders on scene at ${address}`
-            : `Drone uplink established for sector: ${address}`, 'system');
-          break;
-        }
+      if (data.image) {
+        setReconImage(`data:image/jpeg;base64,${data.image}`);
+        addLog(withResponders
+          ? `Visual updated: First responders on scene at ${address}`
+          : `Drone uplink established for sector: ${address}`, 'system');
+      } else {
+        throw new Error(data.error || "No image generated");
       }
     } catch (e) {
       console.error("Failed to generate recon image", e);
@@ -239,62 +206,14 @@ Requirements:
     const updateDebrief = async () => {
       if (transcriptRef.current.length < 15) return;
       try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-        const response = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: `Analyze this 911 transcript and extract information.
-           
-           VOICE TONE ANALYSIS (CRITICAL):
-           - Carefully analyze the caller's emotional state from their language
-           - Look for: urgency words, exclamations, panic indicators, calmness
-           - "Help! Fire! Screaming!" = Panic
-           - "There's an emergency, people trapped" = Distressed  
-           - "I need to report an incident" = Urgent
-           - "The situation is under control now" = Controlled
-           - "Everything is fine, thank you" = Calm
-           
-           TACTICAL LOGISTICS:
-           - Focus on INFRASTRUCTURE and CONTAINMENT (Fire Evac, Grid Lockdown, Traffic Control)
-           - infrastructureStatus: report on Roads, Power Grid, Structure Integrity
-           - DO NOT PROVIDE MEDICAL ADVICE
-           
-           TRANSCRIPT: ${transcriptRef.current}`,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                situation: { type: Type.STRING },
-                personsInvolved: { type: Type.STRING },
-                weapons: { type: Type.STRING },
-                activeThreats: { type: Type.STRING },
-                infrastructureStatus: { type: Type.STRING, description: "Status of nearby infra (Power, Traffic, Structures)" },
-                tone: { type: Type.STRING, enum: ["Panic", "Distressed", "Urgent", "Controlled", "Calm"], description: "Caller's emotional state based on language analysis" },
-                emergencyType: { type: Type.STRING },
-                suggestedActions: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Smart City Commands (e.g. 'Lockdown Sector A', 'Deploy Drones')" },
-                suggestedQuestions: { type: Type.ARRAY, items: { type: Type.STRING } },
-                activeProtocol: {
-                  type: Type.OBJECT,
-                  properties: {
-                    title: { type: Type.STRING, description: "Name of the protocol (e.g. Structural Evac)" },
-                    steps: {
-                      type: Type.ARRAY,
-                      items: {
-                        type: Type.OBJECT,
-                        properties: {
-                          id: { type: Type.STRING },
-                          text: { type: Type.STRING },
-                          status: { type: Type.STRING, enum: ['pending', 'completed'] }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
+        const res = await fetch('http://localhost:8000/api/analyze/incident', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transcript: transcriptRef.current })
         });
-        const json = JSON.parse(response.text) as IncidentDetails;
+        const encryptedData = await res.json();
+        const decryptedText = decryptData(encryptedData);
+        const json = JSON.parse(decryptedText) as IncidentDetails;
 
         // Tone stability: only update if shift is 2+ levels to prevent flickering
         const toneScale = ['Calm', 'Controlled', 'Urgent', 'Distressed', 'Panic'];
@@ -336,46 +255,24 @@ Requirements:
       isProcessing = true;
 
       try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+        const reqPayload = {
+          summary: callState.summary,
+          emergencyType: callState.emergencyType || 'Unknown',
+          activeThreats: callState.incidentDetails.activeThreats,
+          infrastructureStatus: callState.incidentDetails.infrastructureStatus,
+          personsInvolved: callState.incidentDetails.personsInvolved,
+          actionsTaken: autonomousActions.map(a => a.action)
+        };
 
-        // Ask Gemini 3 Flash to decide on autonomous actions
-        const response = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: `You are an AUTONOMOUS emergency dispatcher AI. Based on the current incident, decide if ANY proactive actions should be taken NOW.
-
-CURRENT INCIDENT STATE:
-- Situation: ${callState.summary}
-- Emergency Type: ${callState.emergencyType || 'Unknown'}
-- Threat Level: ${callState.incidentDetails.activeThreats}
-- Infrastructure: ${callState.incidentDetails.infrastructureStatus}
-- Persons: ${callState.incidentDetails.personsInvolved}
-
-ACTIONS ALREADY TAKEN (do NOT repeat):
-${autonomousActions.map(a => `- ${a.action}`).join('\n') || '- None yet'}
-
-Decide if you should proactively take ONE of these actions NOW:
-1. dispatch_backup - Deploy additional units if situation is escalating
-2. expand_perimeter - Widen the lockdown area for safety
-3. request_air_support - Call for helicopter if needed
-4. notify_hospitals - Alert nearby hospitals of incoming casualties
-5. none - No action needed right now
-
-Respond with JSON. Only suggest an action if it's CLEARLY needed and NOT already taken.`,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                shouldAct: { type: Type.BOOLEAN, description: "Whether to take action" },
-                action: { type: Type.STRING, description: "Action to take" },
-                reason: { type: Type.STRING, description: "Why this action is needed" },
-                details: { type: Type.STRING, description: "Specific details for the action" }
-              }
-            }
-          }
+        const res = await fetch('http://localhost:8000/api/analyze/autonomous', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(reqPayload)
         });
-
-        const decision = JSON.parse(response.text) as {
+        const encryptedData = await res.json();
+        const decryptedText = decryptData(encryptedData);
+        
+        const decision = JSON.parse(decryptedText) as {
           shouldAct: boolean;
           action: string;
           reason: string;
@@ -440,15 +337,31 @@ Respond with JSON. Only suggest an action if it's CLEARLY needed and NOT already
     setAutonomousActions(prev => prev.map(a => a.id === id ? { ...a, status } : a));
   }, []);
 
-  useEffect(() => {
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(async (pos) => {
+  const startCall = async () => {
+    setCallState(prev => ({ ...prev, isConnecting: true }));
+    transcriptRef.current = "";
+    setAutonomousActions([]);
+    setReconImage(null);
+    respondersImageGenerated.current = false;
+    setExecutedActions(new Set());
+    setPerimeterRadius(0);
+    setSecondaryLocations([]);
+    setDispatchRoutes([]);
+    setLocation(null);
+
+    addLog('Triangulating nearest response station...', 'system');
+
+    // Triangulate before starting the neural grid connection
+    await new Promise<void>((resolve) => {
+      if (!("geolocation" in navigator)) {
+        setLocation({ address: "Central Command [Default]", lat: 40.7128, lng: -74.0060, confidence: 'Default' });
+        resolve();
+        return;
+      }
+      navigator.geolocation.getCurrentPosition((pos) => {
         const { latitude, longitude } = pos.coords;
         
         // OPTIMIZED ALGORITHM: Use R-Tree bounding box search (Spatial Indexing)
-        // Instead of scanning all stations (O(n)), we query a local box (O(log n))
-        // This is extremely fast even with 100,000+ stations.
-        
         const SEARCH_RADIUS_DEG = 0.5; // Approx 30-35 miles
         const candidates = stationIndex.search({
           minX: longitude - SEARCH_RADIUS_DEG,
@@ -470,42 +383,29 @@ Respond with JSON. Only suggest an action if it's CLEARLY needed and NOT already
         }
 
         if (nearest) {
-            // Found a station in the spatial index
-             setLocation({
+            setLocation({
               address: `[NEAREST HQ] ${nearest.name}`,
               lat: nearest.lat,
               lng: nearest.lng,
               confidence: 'Station Lock (Local DB)'
             });
-            // Force map update
             addLog(`Fast-Search: Nearest Dept Found (${nearest.name})`, 'system');
-            return;
+        } else {
+            setLocation({
+              address: `Sector Grid: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+              lat: latitude,
+              lng: longitude,
+              confidence: 'GPS Signal'
+            });
+            addLog(`Triangulated approximate GPS coordinates`, 'system');
         }
-        
-        // Fallback or if no close station found
-        setLocation({
-          address: `Sector Grid: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
-          lat: latitude,
-          lng: longitude,
-          confidence: 'GPS Signal'
-        });
+        resolve();
       }, () => {
         setLocation({ address: "Central Command [Default]", lat: 40.7128, lng: -74.0060, confidence: 'Default' });
+        resolve();
       });
-    }
-  }, []);
+    });
 
-  const startCall = async () => {
-    setCallState(prev => ({ ...prev, isConnecting: true }));
-    transcriptRef.current = "";
-    setAutonomousActions([]);
-    setReconImage(null);
-    respondersImageGenerated.current = false;
-    setExecutedActions(new Set());
-    setPerimeterRadius(0);
-    setSecondaryLocations([]);
-    setDispatchRoutes([]);
-    setLocation(null);
     addLog('Connecting to City Neural Grid...', 'system');
 
     clientRef.current = new LiveClient({
