@@ -6,7 +6,7 @@ import AudioVisualizer from './components/AudioVisualizer';
 import { LocationData, CallState, LogEntry, IncidentDetails, ProtocolStep } from './types';
 import { LiveClient } from './services/liveClient';
 import { Type } from '@google/genai';
-import { Siren, Activity, ShieldCheck, BrainCircuit, Globe, Zap, Mic, FileText, AlertOctagon, CheckCircle2, Play, ClipboardList, Server, Radio, Truck, Navigation, Camera, MessageCircle, HeartPulse, ShieldAlert } from 'lucide-react';
+import { Siren, Activity, ShieldCheck, BrainCircuit, Globe, Zap, Mic, FileText, AlertOctagon, CheckCircle2, Play, ClipboardList, Server, Radio, Truck, Navigation, Camera, MessageCircle, HeartPulse, ShieldAlert, Video, VideoOff } from 'lucide-react';
 import clsx from 'clsx';
 import RBush from 'rbush';
 import policeStationsData from './utils/policeStations.json';
@@ -41,6 +41,7 @@ stationIndex.load(stationItems);
 
 import { decryptData } from './utils/cryptoUtils';
 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 const NOMINATIM_BASE_URL = 'https://nominatim.openstreetmap.org';
 
 const App: React.FC = () => {
@@ -76,12 +77,18 @@ const App: React.FC = () => {
   const [perimeterRadius, setPerimeterRadius] = useState(0);
   const [secondaryLocations, setSecondaryLocations] = useState<SecondaryLocation[]>([]);
   const [dispatchRoutes, setDispatchRoutes] = useState<DispatchRoute[]>([]);
+  const [isWebcamActive, setIsWebcamActive] = useState(false);
 
   const clientRef = useRef<LiveClient | null>(null);
   const transcriptRef = useRef<string>("");
   const lastSourceRef = useRef<LogEntry['source'] | null>(null);
   const locationRef = useRef<LocationData | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const autonomousActionsRef = useRef<{ id: string, action: string, status: 'pending' | 'success' | 'failed', timestamp: Date }[]>([]);
+  const webcamRef = useRef<HTMLVideoElement>(null);
+  const webcamCanvasRef = useRef<HTMLCanvasElement>(null);
+  const webcamIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const webcamStreamRef = useRef<MediaStream | null>(null);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -96,6 +103,59 @@ const App: React.FC = () => {
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  // Keep autonomousActionsRef in sync
+  useEffect(() => {
+    autonomousActionsRef.current = autonomousActions;
+  }, [autonomousActions]);
+
+  // ── LIVE WEBCAM STREAMING ──────────────────────────────────────────────
+  // Captures frames at ~1fps and streams to Gemini Live API for real-time visual analysis
+  const startWebcam = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: 640, height: 480 } });
+      webcamStreamRef.current = stream;
+      if (webcamRef.current) {
+        webcamRef.current.srcObject = stream;
+        await webcamRef.current.play();
+      }
+      setIsWebcamActive(true);
+      addLog('[LIVE CAMERA UPLINK] - Streaming visual telemetry at 1fps', 'system');
+
+      // Capture and send frames at ~1fps
+      webcamIntervalRef.current = setInterval(() => {
+        if (!webcamRef.current || !webcamCanvasRef.current || !clientRef.current) return;
+        const video = webcamRef.current;
+        const canvas = webcamCanvasRef.current;
+        canvas.width = 640;
+        canvas.height = 480;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(video, 0, 0, 640, 480);
+        const base64 = canvas.toDataURL('image/jpeg', 0.7);
+        clientRef.current.sendVisionUpdate(base64);
+      }, 1000);
+    } catch (e) {
+      console.error('Webcam access failed:', e);
+      addLog('[CAMERA ERROR] - Unable to access camera', 'system');
+    }
+  };
+
+  const stopWebcam = () => {
+    if (webcamIntervalRef.current) {
+      clearInterval(webcamIntervalRef.current);
+      webcamIntervalRef.current = null;
+    }
+    if (webcamStreamRef.current) {
+      webcamStreamRef.current.getTracks().forEach(t => t.stop());
+      webcamStreamRef.current = null;
+    }
+    if (webcamRef.current) {
+      webcamRef.current.srcObject = null;
+    }
+    setIsWebcamActive(false);
+    addLog('[CAMERA FEED TERMINATED]', 'system');
   };
 
   // Keep locationRef in sync with location state
@@ -159,7 +219,7 @@ const App: React.FC = () => {
     setIsGeneratingImage(true);
     setReconImage(null);
     try {
-      const res = await fetch('http://localhost:8000/api/recon', {
+      const res = await fetch(`${BACKEND_URL}/api/recon`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ address, withResponders })
@@ -222,7 +282,7 @@ const App: React.FC = () => {
     const updateDebrief = async () => {
       if (transcriptRef.current.length < 15) return;
       try {
-        const res = await fetch('http://localhost:8000/api/analyze/incident', {
+        const res = await fetch(`${BACKEND_URL}/api/analyze/incident`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ transcript: transcriptRef.current })
@@ -277,10 +337,10 @@ const App: React.FC = () => {
           activeThreats: callState.incidentDetails.activeThreats,
           infrastructureStatus: callState.incidentDetails.infrastructureStatus,
           personsInvolved: callState.incidentDetails.personsInvolved,
-          actionsTaken: autonomousActions.map(a => a.action)
+          actionsTaken: autonomousActionsRef.current.map(a => a.action)
         };
 
-        const res = await fetch('http://localhost:8000/api/analyze/autonomous', {
+        const res = await fetch(`${BACKEND_URL}/api/analyze/autonomous`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(reqPayload)
@@ -340,7 +400,7 @@ const App: React.FC = () => {
       clearInterval(interval);
       clearTimeout(initialDelay);
     };
-  }, [callState.isActive, callState.summary, callState.emergencyType, callState.incidentDetails, autonomousActions]);
+  }, [callState.isActive, callState.summary, callState.emergencyType, callState.incidentDetails]);
 
   // Helper to add autonomous action log
   const addAutonomousAction = useCallback((action: string, status: 'pending' | 'success' | 'failed' = 'pending') => {
@@ -586,14 +646,39 @@ const App: React.FC = () => {
 
         <div className="flex items-center gap-4">
           <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleImageUpload} />
+          {/* Hidden webcam elements for frame capture */}
+          <video ref={webcamRef} className="hidden" playsInline muted />
+          <canvas ref={webcamCanvasRef} className="hidden" />
           {callState.isActive && (
-            <button
-               onClick={() => fileInputRef.current?.click()}
-               className="px-3 py-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-300 font-bold text-[10px] tracking-widest uppercase hover:bg-purple-500/20 active:scale-95 flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(168,85,247,0.15)]"
-            >
-               <Camera size={13} className="animate-pulse" />
-               Live Intel Feed
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Webcam toggle button */}
+              <button
+                 onClick={isWebcamActive ? stopWebcam : startWebcam}
+                 className={clsx(
+                   "px-3 py-1.5 rounded-lg border font-bold text-[10px] tracking-widest uppercase active:scale-95 flex items-center gap-2 transition-all",
+                   isWebcamActive
+                     ? "border-green-500/50 bg-green-500/20 text-green-300 shadow-[0_0_15px_rgba(34,197,94,0.2)]"
+                     : "border-purple-500/30 bg-purple-500/10 text-purple-300 hover:bg-purple-500/20 shadow-[0_0_15px_rgba(168,85,247,0.15)]"
+                 )}
+              >
+                 {isWebcamActive ? <Video size={13} className="animate-pulse" /> : <VideoOff size={13} />}
+                 {isWebcamActive ? 'LIVE FEED ON' : 'Start Camera'}
+              </button>
+              {/* Photo upload fallback */}
+              <button
+                 onClick={() => fileInputRef.current?.click()}
+                 className="px-2 py-1.5 rounded-lg border border-gray-700 bg-gray-800/50 text-gray-400 font-bold text-[10px] tracking-widest uppercase hover:bg-gray-700/50 active:scale-95 transition-all"
+              >
+                 <Camera size={13} />
+              </button>
+              {/* Webcam active indicator */}
+              {isWebcamActive && (
+                <div className="px-2 py-1 rounded border border-green-500/30 bg-green-900/20 flex items-center gap-1.5">
+                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                  <span className="text-[8px] text-green-400 font-mono uppercase">streaming</span>
+                </div>
+              )}
+            </div>
           )}
 
           <div className="hidden lg:flex items-center gap-4 px-4 py-1.5 bg-black/60 rounded-full border border-gray-800 shadow-inner">
@@ -608,7 +693,7 @@ const App: React.FC = () => {
           </div>
 
           <button
-            onClick={callState.isActive ? () => clientRef.current?.disconnect() : startCall}
+            onClick={callState.isActive ? () => { stopWebcam(); clientRef.current?.disconnect(); } : startCall}
             disabled={callState.isConnecting}
             className={clsx(
               "px-6 py-1.5 rounded-lg font-black text-[10px] tracking-[0.2em] uppercase transition-all flex items-center gap-2 border shadow-lg active:scale-95 disabled:opacity-50",

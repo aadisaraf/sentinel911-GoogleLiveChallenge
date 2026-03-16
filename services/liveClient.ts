@@ -3,6 +3,8 @@ import { GoogleGenAI, LiveServerMessage, Modality, Type, FunctionDeclaration } f
 import { createPcmBlob, decodeAudioData, base64ToUint8Array } from "../utils/audioUtils";
 import { decryptData } from '../utils/cryptoUtils';
 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+
 interface LiveClientCallbacks {
   onOpen: () => void;
   onClose: () => void;
@@ -36,7 +38,7 @@ export class LiveClient {
 
     try {
       // Securely fetch and decrypt the API key from the backend proxy
-      const configRes = await fetch('http://localhost:8000/api/config');
+      const configRes = await fetch(`${BACKEND_URL}/api/config`);
       const encryptedConfig = await configRes.json();
       const decConfig = decryptData(encryptedConfig);
       
@@ -351,18 +353,30 @@ CRITICAL:
       // DO NOT send tool responses back - this triggers duplicate AI audio turns
     }
 
-    const audioData = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-    if (audioData && this.audioContext) {
-      try {
-        this.nextStartTime = Math.max(this.nextStartTime, this.audioContext.currentTime);
-        const audioBuffer = await decodeAudioData(base64ToUint8Array(audioData), this.audioContext);
-        const source = this.audioContext.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(this.audioContext.destination);
-        source.start(this.nextStartTime);
-        this.nextStartTime += audioBuffer.duration;
-      } catch (e) {
-        console.error('Audio decode error:', e);
+    // Extract ALL parts from model turn (text + audio)
+    const parts = message.serverContent?.modelTurn?.parts;
+    if (parts) {
+      for (const part of parts) {
+        // AI text transcription — display what the AI is saying as text
+        if (part.text) {
+          this.callbacks.onTranscript(part.text, 'assistant');
+        }
+
+        // Audio playback
+        const audioData = part.inlineData?.data;
+        if (audioData && this.audioContext) {
+          try {
+            this.nextStartTime = Math.max(this.nextStartTime, this.audioContext.currentTime);
+            const audioBuffer = await decodeAudioData(base64ToUint8Array(audioData), this.audioContext);
+            const source = this.audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(this.audioContext.destination);
+            source.start(this.nextStartTime);
+            this.nextStartTime += audioBuffer.duration;
+          } catch (e) {
+            console.error('Audio decode error:', e);
+          }
+        }
       }
     }
 
