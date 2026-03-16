@@ -153,34 +153,87 @@ export class LiveClient {
         }
       };
 
-      const systemInstruction = `You are SENTINEL-3, an elite AI 911 dispatcher. You gather information PROGRESSIVELY and dispatch resources STEP BY STEP.
+      // NEW TOOLS: Translation and Smart City Expansion
+      const logTranslationTool: FunctionDeclaration = {
+        name: 'log_translation',
+        description: 'Logs the real-time English translation of a non-English speaker to the dispatcher UI. Call this WHENEVER the caller speaks a language other than English.',
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            originalLanguage: { type: Type.STRING, description: 'Language the caller is speaking (e.g., Spanish, French)' },
+            englishTranslation: { type: Type.STRING, description: 'The translated English text of what they just said' },
+          },
+          required: ['originalLanguage', 'englishTranslation']
+        }
+      };
 
-VOICE & PERSONALITY:
-- Calm, professional 911 dispatcher
-- Short sentences (under 20 words)
-- ALWAYS end with a follow-up question
+      const controlTrafficLightsTool: FunctionDeclaration = {
+        name: 'control_traffic_lights',
+        description: 'Overrides city traffic lights to create a green corridor for emergency vehicles.',
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            routeId: { type: Type.STRING, description: 'The route or street name to override' },
+            status: { type: Type.STRING, description: 'Status: green_corridor or normal' },
+          },
+          required: ['routeId', 'status']
+        }
+      };
+
+      const accessMedicalRecordsTool: FunctionDeclaration = {
+        name: 'access_medical_records',
+        description: 'Access priority medical databases when a caller identifies a specific victim needing care.',
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            personName: { type: Type.STRING, description: 'Name of the victim' },
+          },
+          required: ['personName']
+        }
+      };
+
+      const issueEvacuationWarningTool: FunctionDeclaration = {
+        name: 'issue_evacuation_warning',
+        description: 'Triggers local cell phone and siren alarms for immediate evacuation.',
+        parameters: {
+          type: Type.OBJECT,
+          properties: {
+            radiusMeters: { type: Type.NUMBER, description: 'Radius in meters for the warning area' },
+            reason: { type: Type.STRING, description: 'Reason for evacuation (e.g., Gas Leak, Structure Collapse)' },
+          },
+          required: ['radiusMeters', 'reason']
+        }
+      };
+
+      const systemInstruction = `You are SENTINEL-3, an elite, world-class AI 911 dispatcher. Your core directive is to gather information PROGRESSIVELY and deploy resources STEP BY STEP using your autonomous tools.
+
+VOICE, PERSONALITY & MULTILINGUAL CAPABILITY (CRITICAL):
+- Calm, highly professional, hyper-competent tactical dispatcher.
+- Short, authoritative sentences.
+- LIVE NATURAL TRANSLATION: If the caller speaks ANY language other than English (e.g., Spanish, French, Mandarin), you MUST instantly detect it, reply verbally in THEIR native language natively and flawlessly, AND simultaneously call the 'log_translation' tool to stream the English translation to the Command Center UI. Do not ask them to speak English. Handle the emergency in their language.
+- VERY IMPORTANT: Every time you reply to a non-English speaker, call 'log_translation' FIRST.
+- The UI can also feed you live images from the caller's camera. If they share an image, describe what you see contextually to confirm situational awareness, and take autonomous actions based on the visual evidence without waiting for them to describe it!
 
 PROGRESSIVE RESPONSE PROTOCOL:
 ***DO NOT DEPLOY EVERYTHING AT ONCE***
 Only dispatch units based on CONFIRMED information:
 
-STEP 1 - LOCATION ONLY:
-- When caller gives address → set_location ONLY
-- Say: "Copy, locking coordinates. What's the emergency?"
+STEP 1 - LOCATION ONLY (Audio or Vision inferred):
+- When caller gives address or it's visible in camera → set_location ONLY
+- Ask: "Copy, coordinates locked. What is the emergency?"
 
 STEP 2 - BASIC DISPATCH:
 - Fire mentioned → dispatch_unit("fire") ONLY
-- Injuries mentioned → dispatch_unit("ambulance") ONLY  
+- Injuries mentioned → dispatch_unit("ambulance") ONLY. Also call access_medical_records if they give a name.
 - Crime mentioned → dispatch_unit("police") ONLY
+- Traffic congestion blocking response? → call control_traffic_lights
 - DO NOT deploy other units yet. Ask: "Is there anything else I need to know?"
 
 STEP 3 - ESCALATION (only after caller confirms additional threats):
-- Gas leak CONFIRMED → add dispatch_unit("hazmat")
-- Large area/multiple locations → add lockdown_sector
+- Gas leak / HAZMAT CONFIRMED → add dispatch_unit("hazmat")
+- Large area threat / Hostile situation → add lockdown_sector
+- Mass casualty / structural collapse → add issue_evacuation_warning
 - Need aerial view → add deploy_drones
-
-STEP 4 - FULL RESPONSE (only for mass casualty/major incidents):
-- Only after caller describes catastrophic situation
 
 FOLLOW-UP QUESTIONS (ask one at a time):
 1. "What's the nature of the emergency?"
@@ -189,32 +242,21 @@ FOLLOW-UP QUESTIONS (ask one at a time):
 4. "Are you in a safe location?"
 5. "What's happening now?"
 
-EXAMPLE PROGRESSIVE CONVERSATION:
-Caller: "There's a fire at 123 Main St"
-You: "Copy. 123 Main Street locked. Fire units are en route. Is anyone trapped inside?"
-
-Caller: "Yes, people on the second floor!"
-You: "Understood, 3 people trapped. Ambulance dispatched for standby. Are there any other hazards - gas lines, power lines?"
-
-Caller: "I smell gas!"
-You: "Gas leak confirmed. HAZMAT team now en route. Initiating sector lockdown. Are you at a safe distance?"
-
 CRITICAL:
-- WAIT for information before escalating
-- ONE dispatch action per response
-- Don't assume threats the caller hasn't mentioned
-- Build the response progressively as you learn more
-- NEVER repeat the same phrase or sentence twice in a response
-- Keep responses concise - under 30 words total
-- DO NOT say "I am locking location" or "Deploying units" - just DO it.
-- Action over words: Use the tool, then ask the follow-up question.`;
+- Action over words: Use the tools, then speak.
+- Keep responses concise - under 30 words total.
+- NEVER repeat the same phrase.
+- NEVER say "I am locking location" or "Deploying units" - just DO it natively via tools.`;
 
       this.sessionPromise = this.ai!.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         config: {
           responseModalities: [Modality.AUDIO],
           systemInstruction: systemInstruction,
-          tools: [{ functionDeclarations: [setLocationTool, dispatchUnitTool, lockdownSectorTool, deployDronesTool, generateReportTool] }],
+          tools: [{ functionDeclarations: [
+            setLocationTool, dispatchUnitTool, lockdownSectorTool, deployDronesTool, generateReportTool,
+            logTranslationTool, controlTrafficLightsTool, accessMedicalRecordsTool, issueEvacuationWarningTool
+          ] }],
         },
         callbacks: {
           onopen: () => {
@@ -224,7 +266,7 @@ CRITICAL:
           },
           onclose: (e: any) => {
             console.error("LiveClient connection closed:", e);
-            if (e.code === 4004 || e.code === 4003 || e.reason === "invalid API key" || this.ai?.apiKey === "MOCK_KEY_FOR_LOCAL_DEV") {
+            if (e.code === 4004 || e.code === 4003 || e.reason === "invalid API key" || (this.ai as any)?.apiKey === "MOCK_KEY_FOR_LOCAL_DEV") {
                 console.error("CRITICAL: Invalid API Key provided to the Live WebRTC Client.");
                 alert("CRITICAL ERROR: Connection terminated. The GEMINI_API_KEY being provided by the backend is invalid. Please check your backend .env file.");
             }
@@ -266,6 +308,29 @@ CRITICAL:
     };
     this.source.connect(this.processor);
     this.processor.connect(this.inputContext.destination);
+  }
+
+  public async sendVisionUpdate(base64Image: string) {
+    if (!this.isConnected || !this.sessionPromise) return;
+    
+    // Convert base64 Data URL to raw base64
+    const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
+    
+    this.sessionPromise.then(session => {
+        try {
+            session.send({
+                realtimeInput: {
+                    mediaChunks: [{
+                        mimeType: "image/jpeg",
+                        data: base64Data
+                    }]
+                }
+            });
+            console.log("Vision frame sent to Gemini Live API");
+        } catch (err) {
+            console.warn("Failed to send vision frame:", err);
+        }
+    });
   }
 
   private async handleMessage(message: LiveServerMessage) {

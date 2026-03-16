@@ -6,7 +6,7 @@ import AudioVisualizer from './components/AudioVisualizer';
 import { LocationData, CallState, LogEntry, IncidentDetails, ProtocolStep } from './types';
 import { LiveClient } from './services/liveClient';
 import { Type } from '@google/genai';
-import { Siren, Activity, ShieldCheck, BrainCircuit, Globe, Zap, Mic, FileText, AlertOctagon, CheckCircle2, Play, ClipboardList, Server, Radio, Truck, Navigation } from 'lucide-react';
+import { Siren, Activity, ShieldCheck, BrainCircuit, Globe, Zap, Mic, FileText, AlertOctagon, CheckCircle2, Play, ClipboardList, Server, Radio, Truck, Navigation, Camera, MessageCircle, HeartPulse, ShieldAlert } from 'lucide-react';
 import clsx from 'clsx';
 import RBush from 'rbush';
 import policeStationsData from './utils/policeStations.json';
@@ -30,7 +30,7 @@ interface StationItem {
 }
 
 const stationIndex = new RBush<StationItem>();
-const stationItems: StationItem[] = policeStationsData.map(p => ({
+const stationItems: StationItem[] = (policeStationsData as any[]).map(p => ({
   minX: p.lng,
   minY: p.lat,
   maxX: p.lng,
@@ -81,6 +81,22 @@ const App: React.FC = () => {
   const transcriptRef = useRef<string>("");
   const lastSourceRef = useRef<LogEntry['source'] | null>(null);
   const locationRef = useRef<LocationData | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (clientRef.current) {
+        clientRef.current.sendVisionUpdate(base64);
+        addLog(`[LIVE CAMERA STREAM INITIATED] - Sending visual telemetry`, 'system');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Keep locationRef in sync with location state
   useEffect(() => {
@@ -422,6 +438,11 @@ const App: React.FC = () => {
       onTranscript: (text, source) => addLog(text, source),
       onTurnComplete: () => { },
       onToolCall: (toolName, args) => {
+        if (toolName === 'log_translation') {
+            addLog(`💬 [TRANSLATED from ${args.originalLanguage.toUpperCase()}]: ${args.englishTranslation}`, 'assistant');
+            return;
+        }
+
         // Format tool call for display
         const toolLabels: Record<string, string> = {
           'set_location': `📍 Location Lock: ${args.address}`,
@@ -429,6 +450,9 @@ const App: React.FC = () => {
           'lockdown_sector': `🔒 Lockdown ${args.sectorId} (${args.level})`,
           'deploy_drones': `🛸 Deploy ${args.count} drone(s) → ${args.location}`,
           'generate_report': `📋 Report: ${args.incidentType}`,
+          'control_traffic_lights': `🚦 Traffic Ovrd: ${args.routeId} (${args.status})`,
+          'access_medical_records': `🏥 Med Db Access: Priority Intel for ${args.personName}`,
+          'issue_evacuation_warning': `⚠️ SYSTEM-WIDE EVAC: ${args.radiusMeters}m radius (${args.reason})`,
         };
         const actionLabel = toolLabels[toolName] || `${toolName}: ${JSON.stringify(args)}`;
 
@@ -549,19 +573,30 @@ const App: React.FC = () => {
       {/* Header */}
       <header className="h-12 border-b border-gray-800 bg-gray-900/90 backdrop-blur-xl flex items-center justify-between px-6 shrink-0 z-50">
         <div className="flex items-center gap-3">
-          <div className="bg-blue-600 p-1.5 rounded-lg shadow-lg">
-            <Server size={16} className="text-white" />
+          <div className="bg-gradient-to-br from-blue-600 to-indigo-800 p-1.5 rounded-lg shadow-[0_0_15px_rgba(59,130,246,0.3)]">
+            <Server size={17} className="text-white" />
           </div>
           <div>
-            <h1 className="text-xs font-black tracking-[0.4em] uppercase text-white leading-none">Sentinel-3</h1>
+            <h1 className="text-xs font-black tracking-[0.4em] uppercase text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-300 leading-none drop-shadow-sm">Sentinel-3</h1>
             <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-[7px] text-blue-400 font-bold uppercase tracking-widest">Tactical Operations</span>
+              <span className="text-[7px] text-blue-400 font-bold uppercase tracking-widest drop-shadow-[0_0_5px_rgba(96,165,250,0.6)]">Tactical Operations</span>
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="hidden lg:flex items-center gap-4 px-4 py-1.5 bg-black/60 rounded-full border border-gray-800">
+          <input type="file" ref={fileInputRef} hidden accept="image/*" onChange={handleImageUpload} />
+          {callState.isActive && (
+            <button
+               onClick={() => fileInputRef.current?.click()}
+               className="px-3 py-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-300 font-bold text-[10px] tracking-widest uppercase hover:bg-purple-500/20 active:scale-95 flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(168,85,247,0.15)]"
+            >
+               <Camera size={13} className="animate-pulse" />
+               Live Intel Feed
+            </button>
+          )}
+
+          <div className="hidden lg:flex items-center gap-4 px-4 py-1.5 bg-black/60 rounded-full border border-gray-800 shadow-inner">
             <div className="w-32 h-6 flex items-center">
               <AudioVisualizer volume={volume} isActive={callState.isActive} />
             </div>
@@ -724,20 +759,21 @@ const App: React.FC = () => {
             </div>
 
             {/* Scrollable content area */}
-            <div className="flex-1 overflow-y-auto scrollbar-hide px-5">
-              <div className="space-y-3">
+            <div className="flex-1 overflow-y-auto scrollbar-hide px-5 pt-1">
+              <div className="space-y-4">
                 {[
-                  { label: "Situation Summary", val: callState.incidentDetails.situation, icon: AlertOctagon },
-                  { label: "Persons Involved", val: callState.incidentDetails.personsInvolved, icon: Zap },
-                  { label: "Active Threats", val: callState.incidentDetails.activeThreats, icon: ShieldCheck },
-                  { label: "Infrastructure Status", val: callState.incidentDetails.infrastructureStatus, icon: Truck },
+                  { label: "Situation Summary", val: callState.incidentDetails.situation, icon: AlertOctagon, color: 'text-red-400' },
+                  { label: "Persons Involved", val: callState.incidentDetails.personsInvolved, icon: Zap, color: 'text-yellow-400' },
+                  { label: "Active Threats", val: callState.incidentDetails.activeThreats, icon: ShieldAlert, color: 'text-orange-400' },
+                  { label: "Infrastructure Status", val: callState.incidentDetails.infrastructureStatus, icon: Truck, color: 'text-blue-400' },
                 ].map((item, i) => (
-                  <div key={i} className="group">
-                    <div className="flex items-center gap-2 mb-1 opacity-60">
-                      <item.icon size={10} className="text-gray-400" />
-                      <span className="text-[8px] font-bold uppercase tracking-widest text-gray-400">{item.label}</span>
+                  <div key={i} className="group relative">
+                    <div className="absolute -inset-2 bg-gradient-to-r from-gray-900/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity rounded-lg -z-10" />
+                    <div className="flex items-center gap-2 mb-1.5 opacity-80">
+                      <item.icon size={12} className={item.color} />
+                      <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400">{item.label}</span>
                     </div>
-                    <div className="text-[10px] text-gray-200 font-medium leading-snug border-l-2 border-gray-700 pl-2 ml-1 group-hover:border-cyan-500/50 transition-colors line-clamp-2">
+                    <div className="text-[11px] text-gray-200 font-medium leading-relaxed border-l-[3px] border-gray-800 pl-3 ml-1 group-hover:border-cyan-500/50 transition-colors line-clamp-2 shadow-sm">
                       {item.val}
                     </div>
                   </div>
