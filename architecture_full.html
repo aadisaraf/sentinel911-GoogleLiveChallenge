@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sentinel-911 System Architecture</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0e1a;
+    font-family: 'Inter', sans-serif;
+    color: #e2e8f0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(59, 130, 246, 0.04) 0%, transparent 50%),
+      radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.04) 0%, transparent 50%),
+      linear-gradient(rgba(30, 41, 59, 0.15) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(30, 41, 59, 0.15) 1px, transparent 1px);
+    background-size: 100%, 100%, 40px 40px, 40px 40px;
+  }
+
+  .diagram {
+    width: 1600px;
+    position: relative;
+  }
+
+  .title-bar {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+
+  .title-bar h1 {
+    font-size: 28px;
+    font-weight: 900;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 4px;
+  }
+
+  .title-bar .subtitle {
+    font-size: 11px;
+    color: #64748b;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: auto auto auto auto;
+    gap: 16px;
+  }
+
+  .zone {
+    border-radius: 12px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .zone::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    border-radius: 12px;
+    pointer-events: none;
+  }
+
+  .zone-label {
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .zone-label .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .sub-box {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    font-size: 11px;
+  }
+
+  .sub-box .box-title {
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+  }
+
+  .sub-box .box-desc {
+    font-size: 9px;
+    color: #94a3b8;
+    line-height: 1.4;
+  }
+
+  .sub-box .tag {
+    display: inline-block;
+    font-size: 7px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-top: 4px;
+    margin-right: 4px;
+  }
+
+  /* CALLER ZONE */
+  .caller-zone {
+    grid-column: 1 / 4;
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(249, 115, 22, 0.08));
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 48px;
+    padding: 18px 32px;
+  }
+
+  .caller-zone .zone-label { color: #f87171; margin-bottom: 0; }
+  .caller-zone .dot { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+
+  .caller-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(0,0,0,0.3);
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid rgba(239, 68, 68, 0.15);
+  }
+
+  .caller-item .icon {
+    font-size: 20px;
+  }
+
+  .caller-item .label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #fca5a5;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .caller-item .desc {
+    font-size: 8px;
+    color: #94a3b8;
+  }
+
+  /* FRONTEND ZONE */
+  .frontend-zone {
+    grid-column: 1;
+    grid-row: 2 / 4;
+    background: linear-gradient(180deg, rgba(59, 130, 246, 0.06), rgba(59, 130, 246, 0.02));
+    border: 1px solid rgba(59, 130, 246, 0.2);
+  }
+
+  .frontend-zone .zone-label { color: #60a5fa; }
+  .frontend-zone .dot { background: #3b82f6; box-shadow: 0 0 8px #3b82f6; }
+  .frontend-zone .sub-box { border-color: rgba(59, 130, 246, 0.12); }
+  .frontend-zone .box-title { color: #93c5fd; }
+  .frontend-zone .tag { background: rgba(59, 130, 246, 0.15); color: #93c5fd; }
+
+  /* GEMINI ZONE */
+  .gemini-zone {
+    grid-column: 2;
+    grid-row: 2 / 4;
+    background: linear-gradient(180deg, rgba(139, 92, 246, 0.06), rgba(139, 92, 246, 0.02));
+    border: 1px solid rgba(139, 92, 246, 0.2);
+  }
+
+  .gemini-zone .zone-label { color: #a78bfa; }
+  .gemini-zone .dot { background: #8b5cf6; box-shadow: 0 0 8px #8b5cf6; }
+  .gemini-zone .sub-box { border-color: rgba(139, 92, 246, 0.12); }
+  .gemini-zone .box-title { color: #c4b5fd; }
+  .gemini-zone .tag { background: rgba(139, 92, 246, 0.15); color: #c4b5fd; }
+
+  /* GCP ZONE */
+  .gcp-zone {
+    grid-column: 3;
+    grid-row: 2 / 4;
+    background: linear-gradient(180deg, rgba(34, 197, 94, 0.06), rgba(34, 197, 94, 0.02));
+    border: 1px solid rgba(34, 197, 94, 0.2);
+  }
+
+  .gcp-zone .zone-label { color: #4ade80; }
+  .gcp-zone .dot { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+  .gcp-zone .sub-box { border-color: rgba(34, 197, 94, 0.12); }
+  .gcp-zone .box-title { color: #86efac; }
+  .gcp-zone .tag { background: rgba(34, 197, 94, 0.15); color: #86efac; }
+
+  /* ENCRYPTION ZONE */
+  .encryption-zone {
+    grid-column: 1 / 4;
+    background: linear-gradient(90deg, rgba(234, 179, 8, 0.06), rgba(234, 179, 8, 0.12), rgba(234, 179, 8, 0.06));
+    border: 1px solid rgba(234, 179, 8, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    padding: 14px 32px;
+  }
+
+  .encryption-zone .zone-label { color: #fbbf24; margin-bottom: 0; }
+  .encryption-zone .dot { background: #eab308; box-shadow: 0 0 8px #eab308; }
+
+  .enc-detail {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 9px;
+    color: #fcd34d;
+    font-weight: 600;
+    background: rgba(0,0,0,0.3);
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(234, 179, 8, 0.15);
+  }
+
+  /* EXTERNAL ZONE */
+  .external-zone {
+    grid-column: 1 / 3;
+    background: linear-gradient(135deg, rgba(100, 116, 139, 0.06), rgba(100, 116, 139, 0.02));
+    border: 1px solid rgba(100, 116, 139, 0.2);
+  }
+
+  .external-zone .zone-label { color: #94a3b8; }
+  .external-zone .dot { background: #64748b; box-shadow: 0 0 8px #64748b; }
+  .external-zone .sub-box { border-color: rgba(100, 116, 139, 0.12); }
+  .external-zone .box-title { color: #cbd5e1; }
+
+  .external-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+  }
+
+  /* IAC ZONE */
+  .iac-zone {
+    grid-column: 3;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.06), rgba(16, 185, 129, 0.02));
+    border: 1px solid rgba(16, 185, 129, 0.2);
+  }
+
+  .iac-zone .zone-label { color: #34d399; }
+  .iac-zone .dot { background: #10b981; box-shadow: 0 0 8px #10b981; }
+  .iac-zone .sub-box { border-color: rgba(16, 185, 129, 0.12); }
+  .iac-zone .box-title { color: #6ee7b7; }
+
+  .pipeline {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+
+  .pipeline .step {
+    font-size: 7px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(16, 185, 129, 0.15);
+    color: #6ee7b7;
+    white-space: nowrap;
+  }
+
+  .pipeline .arrow {
+    color: #34d399;
+    font-size: 10px;
+    font-weight: 900;
+  }
+
+  /* FLOW ARROWS */
+  .flow-row {
+    grid-column: 1 / 4;
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    padding: 6px 16px;
+  }
+
+  .flow-arrow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+
+  .flow-arrow.blue { color: #93c5fd; background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.15); }
+  .flow-arrow.purple { color: #c4b5fd; background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.15); }
+  .flow-arrow.green { color: #86efac; background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.15); }
+  .flow-arrow.orange { color: #fdba74; background: rgba(249,115,22,0.08); border: 1px solid rgba(249,115,22,0.15); }
+  .flow-arrow.pink { color: #f9a8d4; background: rgba(236,72,153,0.08); border: 1px solid rgba(236,72,153,0.15); }
+  .flow-arrow.teal { color: #5eead4; background: rgba(20,184,166,0.08); border: 1px solid rgba(20,184,166,0.15); }
+  .flow-arrow.yellow { color: #fde68a; background: rgba(234,179,8,0.08); border: 1px solid rgba(234,179,8,0.15); }
+
+  .tool-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3px;
+    margin-top: 6px;
+  }
+
+  .tool-item {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 7px;
+    font-weight: 500;
+    color: #a78bfa;
+    background: rgba(139, 92, 246, 0.08);
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid rgba(139, 92, 246, 0.1);
+  }
+
+  .collection-item {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 8px;
+    color: #86efac;
+    padding: 2px 0;
+    border-bottom: 1px solid rgba(34, 197, 94, 0.08);
+  }
+
+  .collection-item:last-child { border-bottom: none; }
+
+  .watermark {
+    text-align: center;
+    margin-top: 20px;
+    font-size: 9px;
+    color: #334155;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+  <div class="diagram">
+    <div class="title-bar">
+      <h1>🛡️ Sentinel-911 — System Architecture</h1>
+      <div class="subtitle">Autonomous Emergency Dispatch AI • Gemini Live Agent Challenge</div>
+    </div>
+
+    <div class="grid">
+      <!-- ROW 1: CALLER -->
+      <div class="zone caller-zone">
+        <div class="zone-label">
+          <div class="dot"></div>
+          Emergency Caller
+        </div>
+        <div class="caller-item">
+          <div class="icon">🎙️</div>
+          <div>
+            <div class="label">Voice Input</div>
+            <div class="desc">Bidirectional real-time audio</div>
+          </div>
+        </div>
+        <div class="caller-item">
+          <div class="icon">📹</div>
+          <div>
+            <div class="label">Live Webcam</div>
+            <div class="desc">1fps continuous stream → Gemini Vision</div>
+          </div>
+        </div>
+        <div class="caller-item">
+          <div class="icon">🌍</div>
+          <div>
+            <div class="label">40+ Languages</div>
+            <div class="desc">Auto-detected, live translation</div>
+          </div>
+        </div>
+        <div class="caller-item">
+          <div class="icon">📍</div>
+          <div>
+            <div class="label">GPS / Address</div>
+            <div class="desc">Geolocation + Nominatim geocoding</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DATA FLOW ROW -->
+      <div class="flow-row">
+        <div class="flow-arrow purple">⬇ Audio + Vision Frames → Gemini Live API</div>
+        <div class="flow-arrow green">⬆ AI Audio Response + Tool Calls → Frontend</div>
+        <div class="flow-arrow orange">↔ Encrypted API Calls → Backend</div>
+      </div>
+
+      <!-- ROW 2: FRONTEND -->
+      <div class="zone frontend-zone">
+        <div class="zone-label">
+          <div class="dot"></div>
+          React Frontend (Vite + TypeScript)
+        </div>
+
+        <div class="sub-box">
+          <div class="box-title">🔊 Audio Pipeline</div>
+          <div class="box-desc">
+            <strong>AudioWorklet</strong> — PCM 16kHz encoding for Gemini<br>
+            <strong>Web Speech API</strong> — Parallel user transcription<br>
+            <strong>AudioContext 24kHz</strong> — Playback of AI audio responses
+          </div>
+          <span class="tag">AudioWorkletNode</span>
+          <span class="tag">Float32 → PCM16</span>
+        </div>
+
+        <div class="sub-box">
+          <div class="box-title">🗺️ Live Tactical Map (Leaflet)</div>
+          <div class="box-desc">
+            Animated dispatch routes via OSRM real road data<br>
+            Perimeter visualization with radius rings<br>
+            Emergency vehicle markers with arrival detection
+          </div>
+          <span class="tag">React-Leaflet</span>
+          <span class="tag">OSRM Routing</span>
+        </div>
+
+        <div class="sub-box">
+          <div class="box-title">🖥️ Command Center UI</div>
+          <div class="box-desc">
+            Autonomous Actions Log • Incident Board • Transcript Panel<br>
+            Audio Visualizer (real-time waveform) • Smart City Commands<br>
+            Tone Detection (5 levels) • Protocol Status Tracker
+          </div>
+          <span class="tag">899 Lines</span>
+          <span class="tag">Lucide Icons</span>
+        </div>
+
+        <div class="sub-box">
+          <div class="box-title">📐 RBush R-Tree Spatial Index</div>
+          <div class="box-desc">
+            18,000 US police stations • 4.4MB dataset<br>
+            Bounding-box nearest-neighbor search &lt;1ms<br>
+            Loaded at initialization, queried on GPS lock
+          </div>
+          <span class="tag">R-Tree</span>
+          <span class="tag">O(log n)</span>
+        </div>
+
+        <div class="sub-box">
+          <div class="box-title">📷 Vision Input</div>
+          <div class="box-desc">
+            Live webcam capture at 1fps via Canvas API<br>
+            JPEG compression (0.7 quality) → base64 → Gemini<br>
+            Photo upload fallback for mobile devices
+          </div>
+          <span class="tag">getUserMedia</span>
+          <span class="tag">Canvas 640×480</span>
+        </div>
+      </div>
+
+      <!-- ROW 2: GEMINI -->
+      <div class="zone gemini-zone">
+        <div class="zone-label">
+          <div class="dot"></div>
+          Gemini AI Models (Google GenAI SDK)
+        </div>
+
+        <div class="sub-box" style="border-color: rgba(139,92,246,0.25); background: rgba(139,92,246,0.05);">
+          <div class="box-title">🧠 Gemini Live API</div>
+          <div class="box-desc" style="color: #c4b5fd;">
+            Model: <strong>gemini-2.0-flash-exp</strong><br>
+            Real-time bidirectional Audio + Vision<br>
+            WebSocket session with streaming I/O<br>
+            Autonomous function calling during live conversation
+          </div>
+          <span class="tag">Modality.AUDIO</span>
+          <span class="tag">Live Session</span>
+          <div style="margin-top: 8px;">
+            <div style="font-size: 8px; font-weight: 700; color: #a78bfa; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 4px;">9 Autonomous Tool Declarations</div>
+            <div class="tool-list">
+              <div class="tool-item">set_location</div>
+              <div class="tool-item">dispatch_unit</div>
+              <div class="tool-item">lockdown_sector</div>
+              <div class="tool-item">deploy_drones</div>
+              <div class="tool-item">generate_report</div>
+              <div class="tool-item">log_translation</div>
+              <div class="tool-item">control_traffic</div>
+              <div class="tool-item">medical_records</div>
+              <div class="tool-item" style="grid-column: 1/3; text-align: center;">issue_evacuation_warning</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sub-box">
+          <div class="box-title">⚡ Gemini 2.5 Flash</div>
+          <div class="box-desc">
+            Structured JSON analysis with enforced schema<br>
+            Incident extraction: tone, threats, infrastructure<br>
+            Autonomous dispatch decisions with reasoning<br>
+            <strong>Google Search Grounding</strong> for real-world context
+          </div>
+          <span class="tag">JSON Schema</span>
+          <span class="tag">Search Grounding</span>
+          <span class="tag">1.5s Polling</span>
+        </div>
+
+        <div class="sub-box">
+          <div class="box-title">🖼️ Gemini Image Generation</div>
+          <div class="box-desc">
+            Model: <strong>gemini-2.0-flash-exp</strong><br>
+            AI-generated aerial drone reconnaissance imagery<br>
+            Before/after scene generation (pre/post dispatch)<br>
+            JPEG output, 16:9, embedded in tactical map
+          </div>
+          <span class="tag">generate_images()</span>
+          <span class="tag">Visual Recon</span>
+        </div>
+
+        <div class="sub-box">
+          <div class="box-title">🤖 SENTINEL-3 System Prompt</div>
+          <div class="box-desc">
+            3-Step Progressive Response Protocol:<br>
+            1. Location Lock → 2. Basic Dispatch → 3. Escalation<br>
+            Tactical persona with &lt;30 word responses<br>
+            Multilingual auto-detect + translate via tools
+          </div>
+          <span class="tag">Progressive</span>
+          <span class="tag">Autonomous</span>
+        </div>
+      </div>
+
+      <!-- ROW 2: GCP -->
+      <div class="zone gcp-zone">
+        <div class="zone-label">
+          <div class="dot"></div>
+          Google Cloud Platform
+        </div>
+
+        <div class="sub-box" style="border-color: rgba(34,197,94,0.25); background: rgba(34,197,94,0.05);">
+          <div class="box-title">☁️ Cloud Run</div>
+          <div class="box-desc">
+            <strong>FastAPI Backend</strong> (Python 3.11)<br>
+            Uvicorn ASGI server • Docker containerized<br>
+            Auto-scaling, serverless, HTTPS endpoint<br>
+            Memory: 1Gi • CPU: 1 • Timeout: 300s
+          </div>
+          <span class="tag">Managed</span>
+          <span class="tag">Serverless</span>
+          <span class="tag">Unauthenticated</span>
+        </div>
+
+        <div class="sub-box">
+          <div class="box-title">📦 Artifact Registry</div>
+          <div class="box-desc">
+            Docker image storage & versioning<br>
+            Repository: sentinel911-repo<br>
+            Format: Docker • Region: us-central1
+          </div>
+          <span class="tag">Container Registry</span>
+        </div>
+
+        <div class="sub-box" style="border-color: rgba(249,115,22,0.25); background: rgba(249,115,22,0.05);">
+          <div class="box-title" style="color: #fdba74;">🔥 Cloud Firestore</div>
+          <div class="box-desc">
+            NoSQL document database for audit trail<br>
+            Lazy initialization (non-blocking startup)
+          </div>
+          <div style="margin-top: 6px;">
+            <div class="collection-item">📁 incident_analyses</div>
+            <div class="collection-item">📁 autonomous_decisions</div>
+            <div class="collection-item">📁 recon_requests</div>
+          </div>
+          <span class="tag" style="background: rgba(249,115,22,0.15); color: #fdba74;">Timestamp + Model</span>
+          <span class="tag" style="background: rgba(249,115,22,0.15); color: #fdba74;">Audit Trail</span>
+        </div>
+
+        <div class="sub-box">
+          <div class="box-title">🔌 API Endpoints</div>
+          <div class="box-desc" style="font-family: 'JetBrains Mono', monospace; font-size: 8px; line-height: 1.8;">
+            GET /api/health — Deployment proof<br>
+            GET /api/config — Encrypted API key delivery<br>
+            POST /api/recon — AI image generation<br>
+            POST /api/analyze/incident — Structured analysis<br>
+            POST /api/analyze/autonomous — AI dispatch decisions
+          </div>
+        </div>
+
+        <div class="sub-box">
+          <div class="box-title">🌐 Google Search Grounding</div>
+          <div class="box-desc">
+            Real-time web search integration<br>
+            Grounds autonomous decisions in real data<br>
+            Reduces hallucinations in dispatch logic
+          </div>
+          <span class="tag">types.GoogleSearch()</span>
+        </div>
+      </div>
+
+      <!-- ENCRYPTION LAYER -->
+      <div class="zone encryption-zone">
+        <div class="zone-label">
+          <div class="dot"></div>
+          Security Layer
+        </div>
+        <div class="enc-detail">
+          🔒 AES-CBC Encryption
+        </div>
+        <div class="enc-detail">
+          128-bit Key • PKCS7 Padding
+        </div>
+        <div class="enc-detail">
+          IV + Payload JSON Transport
+        </div>
+        <div class="enc-detail">
+          Frontend: crypto-js → Decrypt
+        </div>
+        <div class="enc-detail">
+          Backend: PyCryptodome → Encrypt
+        </div>
+        <div class="enc-detail">
+          All API responses encrypted
+        </div>
+      </div>
+
+      <!-- EXTERNAL SERVICES -->
+      <div class="zone external-zone">
+        <div class="zone-label">
+          <div class="dot"></div>
+          External Services & Data Sources
+        </div>
+        <div class="external-grid">
+          <div class="sub-box">
+            <div class="box-title" style="color: #cbd5e1;">🛣️ OSRM</div>
+            <div class="box-desc">
+              Open Source Routing Machine<br>
+              Real road geometry for dispatch routes<br>
+              GeoJSON response → animated vehicle paths
+            </div>
+          </div>
+          <div class="sub-box">
+            <div class="box-title" style="color: #cbd5e1;">📍 Nominatim</div>
+            <div class="box-desc">
+              OpenStreetMap geocoding<br>
+              Address → lat/lng conversion<br>
+              Timeout: 5s • Email identification
+            </div>
+          </div>
+          <div class="sub-box">
+            <div class="box-title" style="color: #cbd5e1;">🏢 Police Station DB</div>
+            <div class="box-desc">
+              18,000 US stations • 4.4MB JSON<br>
+              R-Tree spatial indexed (RBush)<br>
+              Nearest-neighbor &lt;1ms lookup
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- IAC DEPLOYMENT -->
+      <div class="zone iac-zone">
+        <div class="zone-label">
+          <div class="dot"></div>
+          IaC Deployment Pipeline
+        </div>
+        <div class="sub-box">
+          <div class="box-title">🚀 deploy.sh</div>
+          <div class="box-desc" style="margin-bottom: 8px;">Fully automated Cloud Run deployment</div>
+          <div class="pipeline">
+            <span class="step">Enable APIs</span>
+            <span class="arrow">→</span>
+            <span class="step">Create AR Repo</span>
+            <span class="arrow">→</span>
+            <span class="step">Docker Build</span>
+            <span class="arrow">→</span>
+            <span class="step">Push to AR</span>
+            <span class="arrow">→</span>
+            <span class="step">Deploy Cloud Run</span>
+            <span class="arrow">→</span>
+            <span class="step">Output URL</span>
+          </div>
+        </div>
+        <div class="sub-box">
+          <div class="box-title">🐳 Dockerfile</div>
+          <div class="box-desc">
+            Python 3.11-slim base<br>
+            Multi-stage: gcc build → runtime<br>
+            PORT=8080 (Cloud Run standard)
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="watermark">
+      Sentinel-911 • Gemini Live Agent Challenge 2026 • Built with Google AI
+    </div>
+  </div>
+</body>
+</html>
