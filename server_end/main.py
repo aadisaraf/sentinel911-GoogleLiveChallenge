@@ -107,7 +107,7 @@ def health_check():
         "cloud": "Google Cloud Run",
         "gemini_models": [
             "gemini-2.0-flash-exp (Live API + Image Gen)",
-            "gemini-2.5-flash (Structured Analysis + Grounding)"
+            "gemini-3-flash (Structured Analysis + Grounding)"
         ],
         "gcp_services": [
             "Cloud Run (hosting)",
@@ -244,7 +244,7 @@ TRANSCRIPT: {req.transcript}"""
 
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -256,7 +256,7 @@ TRANSCRIPT: {req.transcript}"""
         log_to_firestore("incident_analyses", {
             "transcript_length": len(req.transcript),
             "response_length": len(response.text),
-            "model": "gemini-2.5-flash"
+            "model": "gemini-3-flash"
         })
 
         return encrypt_data(response.text)
@@ -304,7 +304,7 @@ Respond with JSON. Only suggest an action if it's CLEARLY needed and NOT already
         google_search_tool = types.Tool(google_search=types.GoogleSearch())
 
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
@@ -318,7 +318,7 @@ Respond with JSON. Only suggest an action if it's CLEARLY needed and NOT already
             "summary": req.summary[:200],
             "emergency_type": req.emergencyType,
             "decision": response.text[:500],
-            "model": "gemini-2.5-flash",
+            "model": "gemini-3-flash",
             "grounded": True
         })
 

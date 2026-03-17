@@ -100,7 +100,7 @@ graph TB
     
     subgraph Gemini["🧠 Gemini AI — 3 Models"]
         LiveAPI["gemini-2.0-flash-exp<br/>Live API — Audio + Vision + 9 Tools"]
-        Flash["gemini-2.5-flash<br/>Structured Analysis + Grounding"]
+        Flash["gemini-3-flash<br/>Structured Analysis + Grounding"]
         ImageGen["gemini-2.0-flash-exp<br/>Image Generation — Aerial Recon"]
     end
     
@@ -146,7 +146,7 @@ graph TB
 | Model | Role | Key Capabilities |
 |---|---|---|
 | **`gemini-2.0-flash-exp`** (Live API) | Real-time voice dispatcher | Bidirectional WebSocket audio, live camera vision, **9 autonomous tool declarations**, interruptible conversation, 40+ language detection |
-| **`gemini-2.5-flash`** (Structured) | Incident analysis engine | JSON schema-enforced output, caller tone analysis (5-level scale), tactical triage, Google Search grounding for real-world context |
+| **`gemini-3-flash`** (Structured) | Incident analysis engine | JSON schema-enforced output, caller tone analysis (5-level scale), tactical triage, Google Search grounding for real-world context |
 | **`gemini-2.0-flash-exp`** (Image Gen) | Visual reconnaissance | Photorealistic aerial drone imagery generation, before/after responder views, location-specific scene generation |
 
 ### Google Cloud Services
@@ -441,7 +441,7 @@ Returns:
   "cloud": "Google Cloud Run",
   "gemini_models": [
     "gemini-2.0-flash-exp (Live API + Image Gen)",
-    "gemini-2.5-flash (Structured Analysis + Grounding)"
+    "gemini-3-flash (Structured Analysis + Grounding)"
   ],
   "gcp_services": [
     "Cloud Run (hosting)",
